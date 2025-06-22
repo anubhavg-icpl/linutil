@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Tauri API Test</title>
+</head>
+<body>
+    <h1>Tauri API Test</h1>
+    <div id="status">Checking API...</div>
+    <div id="debug"></div>
+    
+    <script>
+        function log(message) {
+            document.getElementById('debug').innerHTML += message + '<br>';
+            console.log(message);
+        }
+        
+        function checkAPI() {
+            log('Checking for Tauri API...');
+            log('window.__TAURI__: ' + !!window.__TAURI__);
+            log('window.__TAURI_IPC__: ' + !!window.__TAURI_IPC__);
+            
+            if (window.__TAURI__) {
+                log('__TAURI__ structure: ' + JSON.stringify(Object.keys(window.__TAURI__)));
+                if (window.__TAURI__.tauri) {
+                    log('__TAURI__.tauri structure: ' + JSON.stringify(Object.keys(window.__TAURI__.tauri)));
+                }
+                if (window.__TAURI__.invoke) {
+                    log('Direct invoke found!');
+                }
+            }
+            
+            // Try to call a simple Tauri command
+            if (window.__TAURI__ && window.__TAURI__.tauri && window.__TAURI__.tauri.invoke) {
+                log('Trying to call get_system_info...');
+                window.__TAURI__.tauri.invoke('get_system_info')
+                    .then(result => {
+                        log('SUCCESS: ' + JSON.stringify(result));
+                        document.getElementById('status').textContent = 'API Working!';
+                    })
+                    .catch(error => {
+                        log('ERROR: ' + error);
+                        document.getElementById('status').textContent = 'API Error: ' + error;
+                    });
+            } else {
+                document.getElementById('status').textContent = 'API Not Available';
+            }
+        }
+        
+        // Check immediately
+        checkAPI();
+        
+        // Check after DOM load
+        document.addEventListener('DOMContentLoaded', () => {
+            log('DOM loaded, checking again...');
+            checkAPI();
+        });
+        
+        // Check after window load
+        window.addEventListener('load', () => {
+            log('Window loaded, checking again...');
+            setTimeout(checkAPI, 100);
+        });
+    </script>
+</body>
+</html>

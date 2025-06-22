@@ -4,3 +4,4 @@ rust/target
 rust/build
 /build/linutil
 linutil-desktop/debug.log
+egui-desktop/target/*
