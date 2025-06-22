@@ -7,7 +7,7 @@ edition = "2021"
 tauri-build = { version = "1.0", features = [] }
 
 [dependencies]
-tauri = { version = "1.0", features = ["shell-open"] }
+tauri = { version = "1.0", features = ["shell-open", "window-center", "window-close", "window-hide", "window-maximize", "window-minimize", "window-set-focus", "window-set-fullscreen", "window-show"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 linutil_core = { path = "../core" }

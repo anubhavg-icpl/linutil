@@ -484,7 +484,16 @@
         <div class="system-info" id="systemInfo">Loading system info...</div>
     </div>
 
-    <div class="main-container">
+    <!-- Loading Screen -->
+    <div id="loadingScreen" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 9999; color: white;">
+        <div style="text-align: center;">
+            <div class="spinner" style="margin: 0 auto 1rem auto;"></div>
+            <h2>🐧 Linutil Desktop</h2>
+            <p style="margin-top: 0.5rem; opacity: 0.8;">Initializing application...</p>
+        </div>
+    </div>
+
+    <div class="main-container" id="mainContent" style="display: none;">
         <div class="sidebar" id="sidebar">
             <div class="loading">
                 <div class="spinner"></div>
@@ -582,7 +591,27 @@
     </div>
 
     <script>
-        const { invoke } = window.__TAURI__.tauri;
+        // Wait for Tauri API to be available
+        let invoke;
+        
+        function initTauriAPI() {
+            if (window.__TAURI__ && window.__TAURI__.tauri) {
+                invoke = window.__TAURI__.tauri.invoke;
+                console.log('Tauri API initialized successfully');
+                return true;
+            }
+            return false;
+        }
+        
+        // Try to initialize immediately, or wait for window load
+        if (!initTauriAPI()) {
+            window.addEventListener('load', () => {
+                if (!initTauriAPI()) {
+                    console.error('Failed to initialize Tauri API');
+                    showNotification('Failed to initialize Tauri API', 'error');
+                }
+            });
+        }
         
         let currentTabs = [];
         let currentTab = null;
@@ -931,6 +960,16 @@
                 setTimeout(() => document.body.removeChild(notification), 300);
             }, 3000);
         }
+        
+        function hideLoadingScreen() {
+            const loadingScreen = document.getElementById('loadingScreen');
+            const mainContent = document.getElementById('mainContent');
+            
+            if (loadingScreen && mainContent) {
+                loadingScreen.style.display = 'none';
+                mainContent.style.display = 'flex';
+            }
+        }
 
         // Event listeners
         document.getElementById('searchInput').addEventListener('input', (e) => {
@@ -1051,10 +1090,30 @@
 
         // Initialize app
         window.addEventListener('DOMContentLoaded', async () => {
-            loadConfig();
-            await loadSystemInfo();
-            await validateEnvironment();
-            await loadTabs();
+            // Wait a bit for Tauri to fully initialize
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            if (!invoke) {
+                if (!initTauriAPI()) {
+                    showNotification('Tauri API not available. Please restart the application.', 'error');
+                    return;
+                }
+            }
+            
+            try {
+                loadConfig();
+                await loadSystemInfo();
+                await validateEnvironment();
+                await loadTabs();
+                
+                // Hide loading screen and show main content
+                hideLoadingScreen();
+                showNotification('Linutil Desktop initialized successfully!', 'success');
+            } catch (error) {
+                console.error('Initialization error:', error);
+                hideLoadingScreen();
+                showNotification('Failed to initialize application: ' + error, 'error');
+            }
         });
 
         // Close modal when clicking outside

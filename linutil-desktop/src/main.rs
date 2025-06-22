@@ -9,6 +9,7 @@ mod core_integration;
 
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
+use tauri::Manager;
 use config::AppConfig;
 use core_integration::{
     load_tabs_with_core, 
@@ -152,6 +153,13 @@ fn main() {
             refresh_tabs,
             validate_environment
         ])
+        .setup(|app| {
+            // Ensure the main window is visible
+            let window = app.get_window("main").unwrap();
+            window.show().unwrap();
+            window.set_focus().unwrap();
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

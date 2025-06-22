@@ -15,6 +15,17 @@
       "shell": {
         "all": false,
         "open": true
+      },
+      "window": {
+        "all": false,
+        "show": true,
+        "hide": true,
+        "close": true,
+        "minimize": true,
+        "maximize": true,
+        "setFullscreen": true,
+        "setFocus": true,
+        "center": true
       }
     },
     "bundle": {
@@ -52,12 +63,15 @@
     },
     "windows": [
       {
-        "fullscreen": false,
+        "label": "main",
         "height": 800,
         "resizable": true,
         "title": "Linutil Desktop",
         "width": 1200,
-        "center": true
+        "center": true,
+        "visible": true,
+        "decorations": true,
+        "url": "index.html"
       }
     ]
   }
