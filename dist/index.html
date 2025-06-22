@@ -489,7 +489,8 @@
         <div style="text-align: center;">
             <div class="spinner" style="margin: 0 auto 1rem auto;"></div>
             <h2>🐧 Linutil Desktop</h2>
-            <p style="margin-top: 0.5rem; opacity: 0.8;">Initializing application...</p>
+            <p id="loadingText" style="margin-top: 0.5rem; opacity: 0.8;">Initializing application...</p>
+            <div id="debugInfo" style="margin-top: 1rem; font-size: 0.8rem; opacity: 0.6; max-width: 400px; text-align: left;"></div>
         </div>
     </div>
 
@@ -640,8 +641,12 @@
         // Load all tabs
         async function loadTabs() {
             try {
+                console.log('Loading tabs...');
+                showNotification('Loading application data...', 'info');
+                
                 // Load tabs using the improved core integration
                 currentTabs = await invoke('get_all_tabs');
+                console.log('Tabs loaded successfully:', currentTabs.length);
                 
                 // Build searchable entries list
                 allEntries = [];
@@ -656,14 +661,19 @@
                     });
                 });
                 
+                console.log('Search entries built:', allEntries.length);
                 renderSidebar();
                 if (currentTabs.length > 0) {
                     selectTab(currentTabs[0]);
                 }
+                
+                showNotification('Application data loaded successfully!', 'success');
             } catch (error) {
                 console.error('Failed to load tabs:', error);
+                showNotification('Failed to load application data: ' + error, 'error');
                 document.getElementById('sidebar').innerHTML = 
-                    '<div class="tab-item">Failed to load tabs</div>';
+                    '<div class="tab-item">Failed to load tabs: ' + error + '</div>';
+                throw error; // Re-throw to handle in initialization
             }
         }
 
@@ -1090,34 +1100,73 @@
             }
         }
 
+        // Update loading screen
+        function updateLoadingStatus(message, debug = '') {
+            document.getElementById('loadingText').textContent = message;
+            if (debug) {
+                document.getElementById('debugInfo').textContent = debug;
+            }
+        }
+
         // Initialize app
         window.addEventListener('DOMContentLoaded', async () => {
+            console.log('DOM loaded, starting initialization...');
+            updateLoadingStatus('Starting initialization...', 'DOM ready, checking Tauri API...');
+            
             // Wait for Tauri to fully initialize with retry logic
             let retries = 10;
             while (!invoke && retries > 0) {
+                console.log('Waiting for Tauri API, retries left:', retries);
+                updateLoadingStatus('Waiting for Tauri API...', `Retries left: ${retries}`);
                 await new Promise(resolve => setTimeout(resolve, 200));
                 initTauriAPI();
                 retries--;
             }
             
             if (!invoke) {
+                console.error('Tauri API not available after retries');
+                updateLoadingStatus('Tauri API not available!', 'Please restart the application');
+                hideLoadingScreen();
                 showNotification('Tauri API not available. Please restart the application.', 'error');
                 return;
             }
             
+            console.log('Tauri API available, starting initialization...');
+            updateLoadingStatus('Tauri API connected!', 'Starting application initialization...');
+            
             try {
+                console.log('Loading configuration...');
+                updateLoadingStatus('Loading configuration...', 'Reading app settings...');
                 loadConfig();
+                
+                console.log('Loading system info...');
+                updateLoadingStatus('Loading system info...', 'Detecting system details...');
                 await loadSystemInfo();
+                
+                console.log('Validating environment...');
+                updateLoadingStatus('Validating environment...', 'Checking system requirements...');
                 await validateEnvironment();
+                
+                console.log('Loading tabs...');
+                updateLoadingStatus('Loading application data...', 'This may take a moment...');
                 await loadTabs();
                 
+                console.log('Initialization complete!');
+                updateLoadingStatus('Ready!', 'Application loaded successfully');
                 // Hide loading screen and show main content
                 hideLoadingScreen();
                 showNotification('Linutil Desktop initialized successfully!', 'success');
             } catch (error) {
                 console.error('Initialization error:', error);
+                updateLoadingStatus('Initialization failed!', `Error: ${error}`);
                 hideLoadingScreen();
                 showNotification('Failed to initialize application: ' + error, 'error');
+                
+                // Show a fallback interface even if initialization fails
+                document.getElementById('sidebar').innerHTML = 
+                    '<div class="tab-item">Initialization failed. Please check console for details.</div>';
+                document.getElementById('content').innerHTML = 
+                    '<div class="loading">Failed to load application data. Check logs for details.</div>';
             }
         });
 

@@ -18,10 +18,12 @@ pub struct CommandExecutionResult {
 
 /// Load tabs using the core library with proper validation handling
 pub fn load_tabs_with_core(app_config: &AppConfig) -> Result<Vec<TabInfo>, String> {
+    println!("Loading tabs with core...");
     let mut cache = TABS_CACHE.lock().unwrap();
     
     // Check if we have cached tabs
     if let Some(ref cached_tabs) = *cache {
+        println!("Returning cached tabs: {} tabs", cached_tabs.len());
         return Ok(cached_tabs.clone());
     }
     
@@ -29,10 +31,13 @@ pub fn load_tabs_with_core(app_config: &AppConfig) -> Result<Vec<TabInfo>, Strin
     // For desktop app, we want to skip validation to avoid compatibility issues
     let validate = !app_config.override_validation;
     
+    println!("Getting tabs from core (validate={})", validate);
     let tabs = get_tabs(validate);
+    println!("Core returned {} tabs", tabs.len());
     let mut result = Vec::new();
     
-    for tab in tabs.iter() {
+    for (tab_index, tab) in tabs.iter().enumerate() {
+        println!("Processing tab {}: {}", tab_index, tab.name);
         let mut tab_info = TabInfo {
             name: tab.name.clone(),
             entries: Vec::new(),
@@ -73,8 +78,10 @@ pub fn load_tabs_with_core(app_config: &AppConfig) -> Result<Vec<TabInfo>, Strin
         result.push(tab_info);
     }
     
+    println!("Processed all tabs, caching {} tabs", result.len());
     // Cache the result
     *cache = Some(result.clone());
+    println!("Tabs cached successfully");
     Ok(result)
 }
 
