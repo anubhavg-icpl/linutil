@@ -1,6 +1,7 @@
 use std::process::Command;
 
 /// Enhanced command execution with better error handling
+#[allow(dead_code)]
 pub fn execute_command_safe(cmd: &str) -> Result<String, String> {
     let output = Command::new("sh")
         .arg("-c")
@@ -19,6 +20,7 @@ pub fn execute_command_safe(cmd: &str) -> Result<String, String> {
 }
 
 /// Safe script execution with environment setup
+#[allow(dead_code)]
 pub fn execute_script_safe(executable: &str, args: &[String]) -> Result<String, String> {
     let output = Command::new(executable)
         .args(args)

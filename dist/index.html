@@ -595,8 +595,8 @@
         let invoke;
         
         function initTauriAPI() {
-            if (window.__TAURI__ && window.__TAURI__.tauri) {
-                invoke = window.__TAURI__.tauri.invoke;
+            if (window.__TAURI__ && window.__TAURI__.invoke) {
+                invoke = window.__TAURI__.invoke;
                 console.log('Tauri API initialized successfully');
                 return true;
             }
@@ -606,10 +606,12 @@
         // Try to initialize immediately, or wait for window load
         if (!initTauriAPI()) {
             window.addEventListener('load', () => {
-                if (!initTauriAPI()) {
-                    console.error('Failed to initialize Tauri API');
-                    showNotification('Failed to initialize Tauri API', 'error');
-                }
+                setTimeout(() => {
+                    if (!initTauriAPI()) {
+                        console.error('Failed to initialize Tauri API');
+                        showNotification('Tauri API not available. Please restart the application.', 'error');
+                    }
+                }, 100);
             });
         }
         
@@ -1090,14 +1092,17 @@
 
         // Initialize app
         window.addEventListener('DOMContentLoaded', async () => {
-            // Wait a bit for Tauri to fully initialize
-            await new Promise(resolve => setTimeout(resolve, 100));
+            // Wait for Tauri to fully initialize with retry logic
+            let retries = 10;
+            while (!invoke && retries > 0) {
+                await new Promise(resolve => setTimeout(resolve, 200));
+                initTauriAPI();
+                retries--;
+            }
             
             if (!invoke) {
-                if (!initTauriAPI()) {
-                    showNotification('Tauri API not available. Please restart the application.', 'error');
-                    return;
-                }
+                showNotification('Tauri API not available. Please restart the application.', 'error');
+                return;
             }
             
             try {
