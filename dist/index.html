@@ -28,6 +28,123 @@
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
 
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .search-container {
+            position: relative;
+            width: 300px;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            color: #fff;
+            font-size: 0.9rem;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #00d4ff;
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .search-input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .search-results {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: rgba(30, 60, 114, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            margin-top: 4px;
+            max-height: 300px;
+            overflow-y: auto;
+            z-index: 100;
+            display: none;
+        }
+
+        .search-result-item {
+            padding: 0.75rem;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            transition: background 0.2s ease;
+        }
+
+        .search-result-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .search-result-item:last-child {
+            border-bottom: none;
+        }
+
+        .search-result-name {
+            font-weight: 600;
+            color: #00d4ff;
+            margin-bottom: 0.25rem;
+        }
+
+        .search-result-desc {
+            font-size: 0.8rem;
+            opacity: 0.8;
+        }
+
+        .theme-switcher {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            padding: 0.5rem 0.75rem;
+            color: #fff;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.3s ease;
+        }
+
+        .theme-switcher:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .control-buttons {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .control-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            padding: 0.5rem;
+            color: #fff;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.3s ease;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .control-btn.active {
+            background: rgba(0, 212, 255, 0.3);
+            border-color: #00d4ff;
+        }
+
         .header h1 {
             font-size: 1.5rem;
             font-weight: 300;
@@ -268,11 +385,102 @@
         .success {
             color: #28a745;
         }
+
+        /* Theme Styles */
+        body.theme-compatible {
+            background: linear-gradient(135deg, #2c2c2c 0%, #1a1a1a 100%);
+        }
+
+        body.theme-compatible .entry-card {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        body.theme-compatible .entry-name {
+            color: #90EE90;
+        }
+
+        body.theme-compatible .search-input {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        /* Preview Modal Styles */
+        .preview-modal {
+            display: none;
+            position: fixed;
+            z-index: 1001;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+        }
+
+        .preview-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            border-radius: 12px;
+            padding: 2rem;
+            max-width: 800px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .preview-code {
+            background: rgba(0, 0, 0, 0.4);
+            padding: 1rem;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            font-size: 0.85rem;
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* Actions Guide Styles */
+        .actions-guide {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 1rem;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            white-space: pre-line;
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+
+        .guide-item {
+            margin-bottom: 0.5rem;
+        }
+
+        .guide-key {
+            background: rgba(0, 212, 255, 0.2);
+            color: #00d4ff;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
     <div class="header">
         <h1>🐧 Linutil Desktop</h1>
+        <div class="header-controls">
+            <div class="search-container">
+                <input type="text" class="search-input" id="searchInput" placeholder="Search utilities... (Press / to focus)">
+                <div class="search-results" id="searchResults"></div>
+            </div>
+            <div class="control-buttons">
+                <button class="control-btn" id="themeBtn" title="Switch Theme (T)">🎨</button>
+                <button class="control-btn" id="actionsBtn" title="Actions Guide (G)">📋</button>
+                <button class="control-btn" id="configBtn" title="Configuration">⚙️</button>
+            </div>
+        </div>
         <div class="system-info" id="systemInfo">Loading system info...</div>
     </div>
 
@@ -307,12 +515,77 @@
         </div>
     </div>
 
+    <!-- Preview Modal -->
+    <div id="previewModal" class="preview-modal">
+        <div class="preview-content">
+            <div class="modal-header">
+                <span class="modal-title" id="previewTitle">Command Preview</span>
+                <span class="close" id="closePreview">&times;</span>
+            </div>
+            <div id="previewBody">
+                <div class="preview-code" id="previewCode"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Actions Guide Modal -->
+    <div id="actionsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title">Important Actions Guide</span>
+                <span class="close" id="closeActions">&times;</span>
+            </div>
+            <div class="actions-guide">
+                <div class="guide-item"><span class="guide-key">D</span> - disk modifications (ex. partitioning) (privileged)</div>
+                <div class="guide-item"><span class="guide-key">FI</span> - flatpak installation</div>
+                <div class="guide-item"><span class="guide-key">FM</span> - file modification</div>
+                <div class="guide-item"><span class="guide-key">I</span> - installation (privileged)</div>
+                <div class="guide-item"><span class="guide-key">K</span> - kernel modifications (privileged)</div>
+                <div class="guide-item"><span class="guide-key">MP</span> - package manager actions</div>
+                <div class="guide-item"><span class="guide-key">SI</span> - full system installation</div>
+                <div class="guide-item"><span class="guide-key">SS</span> - systemd actions (privileged)</div>
+                <div class="guide-item"><span class="guide-key">RP</span> - package removal</div>
+                <div class="guide-item"><span class="guide-key">P*</span> - privileged *</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Configuration Modal -->
+    <div id="configModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title">Configuration</span>
+                <span class="close" id="closeConfig">&times;</span>
+            </div>
+            <div id="configBody">
+                <div style="margin-bottom: 1rem;">
+                    <label style="display: block; margin-bottom: 0.5rem;">
+                        <input type="checkbox" id="skipConfirmation" style="margin-right: 0.5rem;">
+                        Skip confirmation prompts
+                    </label>
+                    <label style="display: block; margin-bottom: 0.5rem;">
+                        <input type="checkbox" id="overrideValidation" style="margin-right: 0.5rem;">
+                        Override validation (show all commands)
+                    </label>
+                </div>
+                <button class="execute-btn" onclick="saveConfig()">Save Configuration</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const { invoke } = window.__TAURI__.tauri;
         
         let currentTabs = [];
         let currentTab = null;
         let currentCommand = null;
+        let currentTheme = 'default';
+        let allEntries = [];
+        let searchTimeout = null;
+        let appConfig = {
+            skipConfirmation: false,
+            overrideValidation: false
+        };
 
         // Load system info
         async function loadSystemInfo() {
@@ -328,7 +601,23 @@
         // Load all tabs
         async function loadTabs() {
             try {
-                currentTabs = await invoke('get_all_tabs');
+                currentTabs = await invoke('get_all_tabs', {
+                    overrideValidation: appConfig.overrideValidation
+                });
+                
+                // Build searchable entries list
+                allEntries = [];
+                currentTabs.forEach(tab => {
+                    tab.entries.forEach(entry => {
+                        if (entry.command_type !== 'directory') {
+                            allEntries.push({
+                                ...entry,
+                                tabName: tab.name
+                            });
+                        }
+                    });
+                });
+                
                 renderSidebar();
                 if (currentTabs.length > 0) {
                     selectTab(currentTabs[0]);
@@ -398,8 +687,14 @@
                             </div>
                             <div class="entry-description">${entry.description || 'No description available'}</div>
                             <div class="entry-footer">
-                                ${entry.task_list ? `<div class="task-list">${entry.task_list}</div>` : '<div></div>'}
-                                ${entry.multi_select ? '<div class="multi-select">✓ Multi-select</div>' : ''}
+                                <div style="display: flex; gap: 0.5rem;">
+                                    ${entry.task_list ? `<div class="task-list">${entry.task_list}</div>` : ''}
+                                    ${entry.multi_select ? '<div class="multi-select">✓ Multi-select</div>' : ''}
+                                </div>
+                                <div style="display: flex; gap: 0.25rem;">
+                                    <button class="control-btn" onclick="event.stopPropagation(); showPreview('${currentTab.name}', '${entry.name}')" title="Preview (P)" style="width: 24px; height: 24px; font-size: 0.7rem;">👁️</button>
+                                    <button class="control-btn" onclick="event.stopPropagation(); showDescription('${entry.description || 'No description available'}')" title="Description (D)" style="width: 24px; height: 24px; font-size: 0.7rem;">📄</button>
+                                </div>
                             </div>
                         </div>
                     `).join('')}
@@ -410,6 +705,12 @@
         // Show execute dialog
         function showExecuteDialog(tabName, entryName, description) {
             currentCommand = { tabName, entryName };
+            
+            // If skip confirmation is enabled, execute directly
+            if (appConfig.skipConfirmation) {
+                executeCommand();
+                return;
+            }
             
             document.getElementById('modalTitle').textContent = `Execute: ${entryName}`;
             document.getElementById('modalBody').innerHTML = `
@@ -456,18 +757,188 @@
             document.getElementById('modal').style.display = 'none';
         });
 
+        // Search functionality
+        function performSearch(query) {
+            const searchResults = document.getElementById('searchResults');
+            
+            if (!query.trim()) {
+                searchResults.style.display = 'none';
+                return;
+            }
+
+            const results = allEntries.filter(entry => 
+                entry.name.toLowerCase().includes(query.toLowerCase()) ||
+                (entry.description && entry.description.toLowerCase().includes(query.toLowerCase()))
+            ).slice(0, 10); // Limit to 10 results
+
+            if (results.length === 0) {
+                searchResults.innerHTML = '<div class="search-result-item">No results found</div>';
+            } else {
+                searchResults.innerHTML = results.map(entry => `
+                    <div class="search-result-item" onclick="selectSearchResult('${entry.tabName}', '${entry.name}')">
+                        <div class="search-result-name">${entry.name}</div>
+                        <div class="search-result-desc">${entry.description || 'No description'}</div>
+                    </div>
+                `).join('');
+            }
+            
+            searchResults.style.display = 'block';
+        }
+
+        function selectSearchResult(tabName, entryName) {
+            // Find and select the tab
+            const tab = currentTabs.find(t => t.name === tabName);
+            if (tab) {
+                selectTab(tab);
+                // Close search results
+                document.getElementById('searchResults').style.display = 'none';
+                document.getElementById('searchInput').value = '';
+            }
+        }
+
+        // Preview functionality
+        async function showPreview(tabName, entryName) {
+            try {
+                document.getElementById('previewTitle').textContent = `Preview: ${entryName}`;
+                document.getElementById('previewCode').textContent = 'Loading preview...';
+                document.getElementById('previewModal').style.display = 'block';
+                
+                const previewContent = await invoke('get_command_preview', {
+                    tabName: tabName,
+                    entryName: entryName
+                });
+                
+                document.getElementById('previewCode').textContent = previewContent;
+            } catch (error) {
+                console.error('Failed to show preview:', error);
+                document.getElementById('previewCode').textContent = `Error loading preview: ${error}`;
+            }
+        }
+
+        function showDescription(description) {
+            document.getElementById('previewTitle').textContent = 'Command Description';
+            document.getElementById('previewCode').textContent = description;
+            document.getElementById('previewModal').style.display = 'block';
+        }
+
+        // Theme switching
+        function switchTheme() {
+            currentTheme = currentTheme === 'default' ? 'compatible' : 'default';
+            
+            if (currentTheme === 'compatible') {
+                document.body.classList.add('theme-compatible');
+            } else {
+                document.body.classList.remove('theme-compatible');
+            }
+            
+            // Update theme button
+            document.getElementById('themeBtn').style.backgroundColor = 
+                currentTheme === 'compatible' ? 'rgba(0, 212, 255, 0.3)' : '';
+        }
+
+        // Configuration
+        function saveConfig() {
+            appConfig.skipConfirmation = document.getElementById('skipConfirmation').checked;
+            appConfig.overrideValidation = document.getElementById('overrideValidation').checked;
+            
+            // Store in localStorage
+            localStorage.setItem('linutil-config', JSON.stringify(appConfig));
+            
+            document.getElementById('configModal').style.display = 'none';
+            
+            // Reload tabs if validation override changed
+            if (appConfig.overrideValidation) {
+                loadTabs();
+            }
+        }
+
+        function loadConfig() {
+            const saved = localStorage.getItem('linutil-config');
+            if (saved) {
+                appConfig = { ...appConfig, ...JSON.parse(saved) };
+                document.getElementById('skipConfirmation').checked = appConfig.skipConfirmation;
+                document.getElementById('overrideValidation').checked = appConfig.overrideValidation;
+            }
+        }
+
+        // Event listeners
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => performSearch(e.target.value), 300);
+        });
+
+        document.getElementById('searchInput').addEventListener('blur', () => {
+            // Delay hiding to allow click on results
+            setTimeout(() => {
+                document.getElementById('searchResults').style.display = 'none';
+            }, 200);
+        });
+
+        document.getElementById('themeBtn').addEventListener('click', switchTheme);
+
+        document.getElementById('actionsBtn').addEventListener('click', () => {
+            document.getElementById('actionsModal').style.display = 'block';
+        });
+
+        document.getElementById('configBtn').addEventListener('click', () => {
+            loadConfig();
+            document.getElementById('configModal').style.display = 'block';
+        });
+
+        // Close modals
+        document.getElementById('closePreview').addEventListener('click', () => {
+            document.getElementById('previewModal').style.display = 'none';
+        });
+
+        document.getElementById('closeActions').addEventListener('click', () => {
+            document.getElementById('actionsModal').style.display = 'none';
+        });
+
+        document.getElementById('closeConfig').addEventListener('click', () => {
+            document.getElementById('configModal').style.display = 'none';
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            // Focus search on /
+            if (e.key === '/' && !e.target.matches('input')) {
+                e.preventDefault();
+                document.getElementById('searchInput').focus();
+            }
+            
+            // Theme switching with T
+            if (e.key === 't' || e.key === 'T') {
+                if (!e.target.matches('input')) {
+                    e.preventDefault();
+                    switchTheme();
+                }
+            }
+            
+            // Actions guide with G
+            if (e.key === 'g' || e.key === 'G') {
+                if (!e.target.matches('input')) {
+                    e.preventDefault();
+                    document.getElementById('actionsModal').style.display = 'block';
+                }
+            }
+        });
+
         // Initialize app
         window.addEventListener('DOMContentLoaded', () => {
+            loadConfig();
             loadSystemInfo();
             loadTabs();
         });
 
         // Close modal when clicking outside
         window.addEventListener('click', (event) => {
-            const modal = document.getElementById('modal');
-            if (event.target === modal) {
-                modal.style.display = 'none';
-            }
+            const modals = ['modal', 'previewModal', 'actionsModal', 'configModal'];
+            modals.forEach(modalId => {
+                const modal = document.getElementById(modalId);
+                if (event.target === modal) {
+                    modal.style.display = 'none';
+                }
+            });
         });
     </script>
 </body>

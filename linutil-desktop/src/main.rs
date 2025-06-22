@@ -26,14 +26,14 @@ pub struct EntryInfo {
 
 static TABS_CACHE: Mutex<Option<Vec<TabInfo>>> = Mutex::new(None);
 
-fn load_tabs() -> Result<Vec<TabInfo>, String> {
+fn load_tabs_with_validation(validate: bool) -> Result<Vec<TabInfo>, String> {
     let mut cache = TABS_CACHE.lock().unwrap();
     
     if let Some(ref cached_tabs) = *cache {
         return Ok(cached_tabs.clone());
     }
     
-    let tabs = get_tabs(true);
+    let tabs = get_tabs(validate);
     let mut result = Vec::new();
     
     for tab in tabs.iter() {
@@ -71,8 +71,8 @@ fn load_tabs() -> Result<Vec<TabInfo>, String> {
 }
 
 #[tauri::command]
-fn get_all_tabs() -> Result<Vec<TabInfo>, String> {
-    load_tabs()
+fn get_all_tabs(override_validation: Option<bool>) -> Result<Vec<TabInfo>, String> {
+    load_tabs_with_validation(!override_validation.unwrap_or(false))
 }
 
 #[tauri::command]
@@ -165,12 +165,44 @@ fn get_system_info() -> Result<HashMap<String, String>, String> {
     Ok(info)
 }
 
+#[tauri::command]
+fn get_command_preview(tab_name: String, entry_name: String) -> Result<String, String> {
+    let tabs = get_tabs(true);
+    
+    for tab in tabs.iter() {
+        if tab.name == tab_name {
+            for node in tab.tree.root().descendants() {
+                let node_value = node.value();
+                if node_value.name == entry_name {
+                    match &node_value.command {
+                        LinutilCommand::Raw(cmd) => {
+                            return Ok(format!("Raw Command:\n{}\n\nDescription:\n{}", cmd, node_value.description));
+                        }
+                        LinutilCommand::LocalFile { file, .. } => {
+                            match std::fs::read_to_string(file) {
+                                Ok(content) => return Ok(format!("Script Preview:\n{}\n\nDescription:\n{}", content, node_value.description)),
+                                Err(_) => return Ok(format!("Script File: {}\n\nDescription:\n{}", file.display(), node_value.description)),
+                            }
+                        }
+                        LinutilCommand::None => {
+                            return Err("Cannot preview directory".to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    Err("Command not found".to_string())
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             get_all_tabs,
             execute_command,
-            get_system_info
+            get_system_info,
+            get_command_preview
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
