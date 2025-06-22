@@ -1,15 +1,14 @@
 use eframe::egui;
-use linutil_core::{get_tabs, Command as LinutilCommand, Tab, ListNode, ego_tree::{NodeId, Tree}};
+use linutil_core::{get_tabs, Command as LinutilCommand, TabList, ListNode, ego_tree::NodeId};
 use std::process::Command;
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc};
 use std::thread;
-use std::rc::Rc;
 
 fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1200.0, 800.0])
-            .with_title("🐧 Linutil Desktop (eGUI)"),
+            .with_title("🐧 Linutil Desktop"),
         ..Default::default()
     };
 
@@ -20,20 +19,11 @@ fn main() -> Result<(), eframe::Error> {
     )
 }
 
-#[derive(Debug, Clone)]
-pub struct EntryInfo {
-    pub name: String,
-    pub description: String,
-    pub command_type: String,
-    pub task_list: String,
-    pub multi_select: bool,
+#[derive(Clone)]
+pub struct ListEntry {
+    pub node: Arc<ListNode>,
+    pub id: NodeId,
     pub has_children: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct TabInfo {
-    pub name: String,
-    pub entries: Vec<EntryInfo>,
 }
 
 #[derive(Debug, Clone)]
@@ -44,35 +34,54 @@ pub struct CommandResult {
 }
 
 struct LinutilApp {
-    tabs: Vec<TabInfo>,
-    selected_tab: Option<usize>,
+    // Core data
+    tabs: TabList,
+    current_tab_index: usize,
+    
+    // Navigation state (like TUI's visit_stack)
+    visit_stack: Vec<(NodeId, usize)>, // (node_id, selection_index)
+    current_items: Vec<ListEntry>,
+    selected_index: usize,
+    
+    // Multi-selection
+    multi_select: bool,
+    selected_commands: Vec<Arc<ListNode>>,
+    
+    // UI state
     search_text: String,
-    filtered_entries: Vec<EntryInfo>,
-    current_tab_entries: Vec<EntryInfo>,
-    loading: bool,
-    error_message: String,
+    filtered_items: Vec<ListEntry>,
+    
+    // Command execution
     command_output: String,
     show_command_output: bool,
     executing_command: bool,
-    command_tx: Option<mpsc::Sender<(String, String)>>,
+    command_tx: Option<mpsc::Sender<(String, Arc<ListNode>)>>,
     command_rx: Option<mpsc::Receiver<CommandResult>>,
+    
+    // Status
+    loading: bool,
+    error_message: String,
 }
 
 impl LinutilApp {
     fn new() -> Self {
         let mut app = Self {
-            tabs: Vec::new(),
-            selected_tab: None,
+            tabs: get_tabs(false), // false = don't validate, show all commands
+            current_tab_index: 0,
+            visit_stack: Vec::new(),
+            current_items: Vec::new(),
+            selected_index: 0,
+            multi_select: false,
+            selected_commands: Vec::new(),
             search_text: String::new(),
-            filtered_entries: Vec::new(),
-            current_tab_entries: Vec::new(),
-            loading: true,
-            error_message: String::new(),
+            filtered_items: Vec::new(),
             command_output: String::new(),
             show_command_output: false,
             executing_command: false,
             command_tx: None,
             command_rx: None,
+            loading: false,
+            error_message: String::new(),
         };
 
         // Set up command execution channel
@@ -84,88 +93,136 @@ impl LinutilApp {
 
         // Spawn command execution thread
         thread::spawn(move || {
-            while let Ok((tab_name, entry_name)) = cmd_rx.recv() {
-                let result = execute_command(&tab_name, &entry_name);
+            while let Ok((_tab_name, node)) = cmd_rx.recv() {
+                let result = execute_command_node(&node);
                 let _ = result_tx.send(result);
             }
         });
 
-        // Load tabs in background
-        app.load_tabs();
+        // Initialize navigation
+        if !app.tabs.is_empty() {
+            let root_id = app.tabs[0].tree.root().id();
+            app.visit_stack.push((root_id, 0));
+            app.update_items();
+        }
+
         app
     }
 
-    fn load_tabs(&mut self) {
-        println!("Loading tabs from core...");
-        
-        // Load tabs from core library
-        let core_tabs = get_tabs(false); // false = don't validate, show all
-        let mut tabs = Vec::new();
-
-        for core_tab in core_tabs.iter() {
-            let mut tab_info = TabInfo {
-                name: core_tab.name.clone(),
-                entries: Vec::new(),
-            };
-
-            // Convert core entries to our format
-            for node in core_tab.tree.root().descendants() {
-                let node_value = node.value();
-                if node_value.name != "root" {
-                    let command_type = match &node_value.command {
-                        LinutilCommand::Raw(_) => "raw",
-                        LinutilCommand::LocalFile { .. } => "script",
-                        LinutilCommand::None => "directory",
-                    };
-
-                    let entry = EntryInfo {
-                        name: node_value.name.clone(),
-                        description: node_value.description.clone(),
-                        command_type: command_type.to_string(),
-                        task_list: node_value.task_list.clone(),
-                        multi_select: node_value.multi_select,
-                        has_children: node.has_children(),
-                    };
-
-                    tab_info.entries.push(entry);
-                }
-            }
-
-            tabs.push(tab_info);
+    fn update_items(&mut self) {
+        if self.tabs.is_empty() {
+            return;
         }
 
-        self.tabs = tabs;
-        self.loading = false;
+        let current_tab = &self.tabs[self.current_tab_index];
+        let (current_node_id, _) = self.visit_stack.last().copied().unwrap_or((current_tab.tree.root().id(), 0));
         
-        // Select first tab by default
-        if !self.tabs.is_empty() {
-            self.selected_tab = Some(0);
-            self.current_tab_entries = self.tabs[0].entries.clone();
-            self.update_filtered_entries();
+        // Find the current node in the tree
+        let current_node = current_tab.tree.get(current_node_id).unwrap();
+        
+        // Get children of current node
+        self.current_items.clear();
+        for child in current_node.children() {
+            let child_value = child.value();
+            let has_children = child.has_children();
+            
+            self.current_items.push(ListEntry {
+                node: Arc::new((**child_value).clone()),
+                id: child.id(),
+                has_children,
+            });
         }
 
-        println!("Loaded {} tabs successfully", self.tabs.len());
+        // Apply search filter
+        self.apply_search_filter();
+        
+        // Ensure selected index is valid
+        if self.selected_index >= self.filtered_items.len() && !self.filtered_items.is_empty() {
+            self.selected_index = 0;
+        }
     }
 
-    fn update_filtered_entries(&mut self) {
+    fn apply_search_filter(&mut self) {
         if self.search_text.is_empty() {
-            self.filtered_entries = self.current_tab_entries.clone();
+            self.filtered_items = self.current_items.clone();
         } else {
-            self.filtered_entries = self.current_tab_entries
+            let search_lower = self.search_text.to_lowercase();
+            self.filtered_items = self.current_items
                 .iter()
                 .filter(|entry| {
-                    entry.name.to_lowercase().contains(&self.search_text.to_lowercase()) ||
-                    entry.description.to_lowercase().contains(&self.search_text.to_lowercase())
+                    entry.node.name.to_lowercase().contains(&search_lower) ||
+                    entry.node.description.to_lowercase().contains(&search_lower)
                 })
                 .cloned()
                 .collect();
         }
     }
 
-    fn execute_command_async(&mut self, tab_name: &str, entry_name: &str) {
-        if let Some(tx) = &self.command_tx {
-            self.executing_command = true;
-            let _ = tx.send((tab_name.to_string(), entry_name.to_string()));
+    fn enter_directory(&mut self) {
+        if let Some(selected_entry) = self.filtered_items.get(self.selected_index) {
+            if selected_entry.has_children {
+                // Enter the directory
+                self.visit_stack.push((selected_entry.id, self.selected_index));
+                self.selected_index = 0;
+                self.search_text.clear();
+                self.update_items();
+            }
+        }
+    }
+
+    fn go_back(&mut self) {
+        if self.visit_stack.len() > 1 {
+            if let Some((_, previous_selection)) = self.visit_stack.pop() {
+                self.selected_index = previous_selection;
+                self.search_text.clear();
+                self.update_items();
+            }
+        }
+    }
+
+    fn at_root(&self) -> bool {
+        self.visit_stack.len() <= 1
+    }
+
+    fn get_breadcrumb(&self) -> String {
+        if self.tabs.is_empty() {
+            return "Loading...".to_string();
+        }
+        
+        let current_tab = &self.tabs[self.current_tab_index];
+        let mut path = vec![current_tab.name.clone()];
+        
+        for (node_id, _) in &self.visit_stack[1..] {
+            if let Some(node) = current_tab.tree.get(*node_id) {
+                path.push(node.value().name.clone());
+            }
+        }
+        
+        path.join(" > ")
+    }
+
+    fn execute_selected_command(&mut self) {
+        if let Some(selected_entry) = self.filtered_items.get(self.selected_index) {
+            if !selected_entry.has_children {
+                // It's a command, execute it
+                if let Some(tx) = &self.command_tx {
+                    self.executing_command = true;
+                    let tab_name = self.tabs[self.current_tab_index].name.clone();
+                    let _ = tx.send((tab_name, selected_entry.node.clone()));
+                }
+            }
+        }
+    }
+
+    fn toggle_multi_select(&mut self) {
+        if let Some(selected_entry) = self.filtered_items.get(self.selected_index) {
+            if !selected_entry.has_children && selected_entry.node.multi_select {
+                if let Some(pos) = self.selected_commands.iter().position(|x| Arc::ptr_eq(x, &selected_entry.node)) {
+                    self.selected_commands.remove(pos);
+                } else {
+                    self.selected_commands.push(selected_entry.node.clone());
+                }
+            }
         }
     }
 
@@ -183,6 +240,18 @@ impl LinutilApp {
             }
         }
     }
+
+    fn switch_tab(&mut self, tab_index: usize) {
+        if tab_index < self.tabs.len() && tab_index != self.current_tab_index {
+            self.current_tab_index = tab_index;
+            // Reset navigation to root of new tab
+            let root_id = self.tabs[tab_index].tree.root().id();
+            self.visit_stack = vec![(root_id, 0)];
+            self.selected_index = 0;
+            self.search_text.clear();
+            self.update_items();
+        }
+    }
 }
 
 impl eframe::App for LinutilApp {
@@ -195,138 +264,207 @@ impl eframe::App for LinutilApp {
             ctx.request_repaint();
         }
 
-        // Top panel with title and search
+        // Top panel with navigation and search
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.heading("🐧 Linutil Desktop");
-                ui.add_space(20.0);
+                ui.separator();
                 
-                ui.label("Search:");
+                // Breadcrumb navigation
+                ui.label("📍");
+                ui.label(self.get_breadcrumb());
+                
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if self.executing_command {
+                        ui.spinner();
+                        ui.label("Executing...");
+                    }
+                    
+                    // Back button
+                    if !self.at_root() {
+                        if ui.button("⬅ Back").clicked() {
+                            self.go_back();
+                        }
+                    }
+                });
+            });
+            
+            ui.horizontal(|ui| {
+                ui.label("🔍 Search:");
                 let response = ui.text_edit_singleline(&mut self.search_text);
                 if response.changed() {
-                    self.update_filtered_entries();
+                    self.apply_search_filter();
                 }
                 
-                if self.executing_command {
-                    ui.spinner();
-                    ui.label("Executing command...");
+                if self.multi_select {
+                    ui.separator();
+                    ui.label(format!("Selected: {}", self.selected_commands.len()));
+                    if ui.button("Execute Selected").clicked() && !self.selected_commands.is_empty() {
+                        // Execute all selected commands
+                        for cmd in &self.selected_commands {
+                            if let Some(tx) = &self.command_tx {
+                                let tab_name = self.tabs[self.current_tab_index].name.clone();
+                                let _ = tx.send((tab_name, cmd.clone()));
+                            }
+                        }
+                        self.selected_commands.clear();
+                        self.multi_select = false;
+                    }
                 }
             });
         });
 
         // Left sidebar with tabs
-        egui::SidePanel::left("sidebar").min_width(250.0).show(ctx, |ui| {
+        egui::SidePanel::left("sidebar").min_width(200.0).show(ctx, |ui| {
             ui.heading("Categories");
             ui.separator();
 
-            if self.loading {
-                ui.horizontal(|ui| {
-                    ui.spinner();
-                    ui.label("Loading tabs...");
-                });
-            } else if self.tabs.is_empty() {
-                ui.label("No tabs loaded");
-            } else {
-                let mut selected_tab_changed = None;
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    for (i, tab) in self.tabs.iter().enumerate() {
-                        let selected = self.selected_tab == Some(i);
-                        
-                        if ui.selectable_label(selected, &tab.name).clicked() {
-                            selected_tab_changed = Some((i, tab.entries.clone()));
-                        }
-                        
-                        if selected {
-                            ui.label(format!("({} utilities)", tab.entries.len()));
-                        }
+            let mut tab_to_switch = None;
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                for (i, tab) in self.tabs.iter().enumerate() {
+                    let selected = i == self.current_tab_index;
+                    
+                    if ui.selectable_label(selected, &tab.name).clicked() {
+                        tab_to_switch = Some(i);
                     }
-                });
-                
-                if let Some((tab_idx, entries)) = selected_tab_changed {
-                    self.selected_tab = Some(tab_idx);
-                    self.current_tab_entries = entries;
-                    self.update_filtered_entries();
                 }
+            });
+            
+            if let Some(tab_index) = tab_to_switch {
+                self.switch_tab(tab_index);
             }
         });
 
         // Main content area
         egui::CentralPanel::default().show(ctx, |ui| {
-            if self.loading {
+            if self.tabs.is_empty() {
                 ui.vertical_centered(|ui| {
                     ui.add_space(100.0);
                     ui.spinner();
-                    ui.label("Loading application data...");
+                    ui.label("Loading tabs...");
                 });
-            } else if let Some(tab_idx) = self.selected_tab {
-                let tab_name = self.tabs[tab_idx].name.clone();
-                ui.heading(format!("📋 {}", tab_name));
-                ui.separator();
+                return;
+            }
 
-                if self.filtered_entries.is_empty() {
-                    ui.label("No utilities found matching your search.");
-                } else {
-                    let filtered_entries = self.filtered_entries.clone();
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        ui.columns(2, |columns| {
-                            let entries_per_column = (filtered_entries.len() + 1) / 2;
+            // Actions to perform outside the iteration
+            let mut action = None;
+            let at_root = self.at_root();
+            
+            // Show items in current directory
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                // Up directory option
+                if !at_root {
+                    ui.horizontal(|ui| {
+                        if ui.selectable_label(false, "📁 .. (Go back)").clicked() {
+                            action = Some(("go_back", 0));
+                        }
+                    });
+                    ui.separator();
+                }
+
+                // List current items
+                for (i, entry) in self.filtered_items.iter().enumerate() {
+                    let is_selected = i == self.selected_index;
+                    let is_multi_selected = self.selected_commands.iter().any(|cmd| Arc::ptr_eq(cmd, &entry.node));
+                    
+                    ui.group(|ui| {
+                        ui.horizontal(|ui| {
+                            // Selection indicator
+                            if is_multi_selected {
+                                ui.label("✅");
+                            } else if is_selected {
+                                ui.label("▶");
+                            } else {
+                                ui.label("  ");
+                            }
                             
-                            for (col_idx, column) in columns.iter_mut().enumerate() {
-                                let start_idx = col_idx * entries_per_column;
-                                let end_idx = ((col_idx + 1) * entries_per_column).min(filtered_entries.len());
+                            // Icon and name
+                            let icon = if entry.has_children { "📁" } else { "⚙️" };
+                            
+                            if entry.has_children {
+                                ui.heading(format!("{} {}", icon, entry.node.name));
+                            } else {
+                                ui.label(format!("{} {}", icon, entry.node.name));
+                            }
+                        });
+                        
+                        // Description
+                        if !entry.node.description.is_empty() {
+                            ui.label(&entry.node.description);
+                        }
+                        
+                        // Task list info
+                        if !entry.node.task_list.is_empty() {
+                            ui.horizontal(|ui| {
+                                ui.label("🏷️");
+                                ui.small(&entry.node.task_list);
+                            });
+                        }
+                        
+                        // Action buttons
+                        ui.horizontal(|ui| {
+                            if entry.has_children {
+                                if ui.button("📂 Enter").clicked() {
+                                    action = Some(("enter", i));
+                                }
+                            } else {
+                                if ui.button("🚀 Execute").clicked() {
+                                    action = Some(("execute", i));
+                                }
                                 
-                                for entry in &filtered_entries[start_idx..end_idx] {
-                                    // Skip directories for execution
-                                    if entry.command_type == "directory" {
-                                        continue;
+                                if ui.button("👁️ Preview").clicked() {
+                                    action = Some(("preview", i));
+                                }
+                                
+                                if entry.node.multi_select {
+                                    if ui.button("📋 Multi-Select").clicked() {
+                                        action = Some(("multi_select", i));
                                     }
-
-                                    column.group(|ui| {
-                                        ui.vertical(|ui| {
-                                            ui.horizontal(|ui| {
-                                                ui.strong(&entry.name);
-                                                ui.label(format!("[{}]", entry.command_type));
-                                            });
-                                            
-                                            ui.label(&entry.description);
-                                            
-                                            if !entry.task_list.is_empty() {
-                                                ui.horizontal(|ui| {
-                                                    ui.label("🏷️");
-                                                    ui.small(&entry.task_list);
-                                                });
-                                            }
-                                            
-                                            let entry_name = entry.name.clone();
-                                            let entry_desc = entry.description.clone();
-                                            let entry_type = entry.command_type.clone();
-                                            let tab_name_clone = tab_name.clone();
-                                            
-                                            ui.horizontal(|ui| {
-                                                if ui.button("🚀 Execute").clicked() {
-                                                    self.execute_command_async(&tab_name_clone, &entry_name);
-                                                }
-                                                
-                                                if ui.button("👁️ Preview").clicked() {
-                                                    // For now, just show the description
-                                                    self.command_output = format!("📋 Command Preview\n\nName: {}\nType: {}\nDescription: {}", 
-                                                                                 entry_name, entry_type, entry_desc);
-                                                    self.show_command_output = true;
-                                                }
-                                            });
-                                        });
-                                    });
-                                    column.add_space(10.0);
                                 }
                             }
                         });
                     });
+                    
+                    ui.add_space(8.0);
                 }
-            } else {
-                ui.vertical_centered(|ui| {
-                    ui.add_space(100.0);
-                    ui.label("Select a tab to view utilities");
-                });
+                
+                if self.filtered_items.is_empty() && !self.search_text.is_empty() {
+                    ui.centered_and_justified(|ui| {
+                        ui.label("No items match your search.");
+                    });
+                } else if self.current_items.is_empty() {
+                    ui.centered_and_justified(|ui| {
+                        ui.label("This directory is empty.");
+                    });
+                }
+            });
+            
+            // Handle actions after the iteration
+            if let Some((action_type, index)) = action {
+                match action_type {
+                    "go_back" => self.go_back(),
+                    "enter" => {
+                        self.selected_index = index;
+                        self.enter_directory();
+                    }
+                    "execute" => {
+                        self.selected_index = index;
+                        self.execute_selected_command();
+                    }
+                    "preview" => {
+                        if let Some(entry) = self.filtered_items.get(index) {
+                            self.command_output = format!("📋 Command Preview\n\nName: {}\nDescription: {}\nTask List: {}", 
+                                                         entry.node.name, entry.node.description, entry.node.task_list);
+                            self.show_command_output = true;
+                        }
+                    }
+                    "multi_select" => {
+                        self.selected_index = index;
+                        self.toggle_multi_select();
+                        self.multi_select = true;
+                    }
+                    _ => {}
+                }
             }
         });
 
@@ -352,6 +490,7 @@ impl eframe::App for LinutilApp {
                 });
         }
 
+        // Error message
         if !self.error_message.is_empty() {
             egui::Window::new("Error")
                 .show(ctx, |ui| {
@@ -364,42 +503,8 @@ impl eframe::App for LinutilApp {
     }
 }
 
-fn execute_command(tab_name: &str, entry_name: &str) -> CommandResult {
-    println!("Executing command: {} from tab: {}", entry_name, tab_name);
-    
-    // Load tabs fresh to find the command
-    let tabs = get_tabs(false);
-    
-    // Find the tab and command
-    let tab = tabs.iter().find(|t| t.name == tab_name);
-    if tab.is_none() {
-        return CommandResult {
-            success: false,
-            output: "Tab not found".to_string(),
-            error: Some("Could not find the specified tab".to_string()),
-        };
-    }
-    
-    let tab = tab.unwrap();
-    
-    // Find the command in the tab
-    let command_node = tab.tree.root().descendants()
-        .find(|node| {
-            let node_value = node.value();
-            node_value.name == entry_name && !node.has_children()
-        });
-        
-    if command_node.is_none() {
-        return CommandResult {
-            success: false,
-            output: "Command not found".to_string(),
-            error: Some("Could not find the specified command".to_string()),
-        };
-    }
-    
-    let node_value = command_node.unwrap().value();
-    
-    match &node_value.command {
+fn execute_command_node(node: &ListNode) -> CommandResult {
+    match &node.command {
         LinutilCommand::Raw(cmd) => {
             execute_raw_command(cmd)
         },
