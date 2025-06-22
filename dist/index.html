@@ -567,8 +567,16 @@
                         <input type="checkbox" id="overrideValidation" style="margin-right: 0.5rem;">
                         Override validation (show all commands)
                     </label>
+                    <label style="display: block; margin-bottom: 0.5rem;">
+                        <input type="checkbox" id="bypassRoot" style="margin-right: 0.5rem;">
+                        Bypass root user checks
+                    </label>
                 </div>
-                <button class="execute-btn" onclick="saveConfig()">Save Configuration</button>
+                <div style="margin-bottom: 1rem;">
+                    <button class="execute-btn" onclick="saveConfig()">Save Configuration</button>
+                    <button class="execute-btn" onclick="refreshTabs()" style="margin-left: 0.5rem; background: #007bff;">Refresh Tabs</button>
+                    <button class="execute-btn" onclick="validateEnvironment()" style="margin-left: 0.5rem; background: #28a745;">Check Environment</button>
+                </div>
             </div>
         </div>
     </div>
@@ -601,10 +609,8 @@
         // Load all tabs
         async function loadTabs() {
             try {
-                // Always use override validation for desktop to prevent loops
-                currentTabs = await invoke('get_all_tabs', {
-                    overrideValidation: true
-                });
+                // Load tabs using the improved core integration
+                currentTabs = await invoke('get_all_tabs');
                 
                 // Build searchable entries list
                 allEntries = [];
@@ -742,11 +748,21 @@
                     entryName: currentCommand.entryName
                 });
                 
-                outputDiv.className = 'output success';
-                outputDiv.textContent = result;
+                if (result.success) {
+                    outputDiv.className = 'output success';
+                    outputDiv.textContent = `✅ Success!\n\n${result.output}`;
+                } else {
+                    outputDiv.className = 'output error';
+                    let errorText = `❌ Command failed (exit code: ${result.exit_code || 'unknown'})\n\n`;
+                    errorText += `Output: ${result.output}\n`;
+                    if (result.error) {
+                        errorText += `\nError: ${result.error}`;
+                    }
+                    outputDiv.textContent = errorText;
+                }
             } catch (error) {
                 outputDiv.className = 'output error';
-                outputDiv.textContent = `Error: ${error}`;
+                outputDiv.textContent = `❌ Execution Error: ${error}`;
             } finally {
                 executeBtn.disabled = false;
                 executeBtn.textContent = 'Execute Again';
@@ -838,18 +854,26 @@
         }
 
         // Configuration
-        function saveConfig() {
+        async function saveConfig() {
             appConfig.skipConfirmation = document.getElementById('skipConfirmation').checked;
             appConfig.overrideValidation = document.getElementById('overrideValidation').checked;
+            appConfig.bypassRoot = document.getElementById('bypassRoot').checked;
             
             // Store in localStorage
             localStorage.setItem('linutil-config', JSON.stringify(appConfig));
             
-            document.getElementById('configModal').style.display = 'none';
+            try {
+                // Update config and reload tabs
+                await invoke('update_app_config', appConfig);
+                await refreshTabs();
+                
+                // Show success message
+                showNotification('Configuration saved successfully!', 'success');
+            } catch (error) {
+                showNotification('Failed to save configuration: ' + error, 'error');
+            }
             
-            // Always reload tabs when config changes
-            await invoke('update_app_config', appConfig);
-            loadTabs();
+            document.getElementById('configModal').style.display = 'none';
         }
 
         function loadConfig() {
@@ -858,7 +882,54 @@
                 appConfig = { ...appConfig, ...JSON.parse(saved) };
                 document.getElementById('skipConfirmation').checked = appConfig.skipConfirmation;
                 document.getElementById('overrideValidation').checked = appConfig.overrideValidation;
+                document.getElementById('bypassRoot').checked = appConfig.bypassRoot || true;
             }
+        }
+
+        // Show notification
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 1rem;
+                border-radius: 8px;
+                color: white;
+                font-weight: bold;
+                z-index: 10000;
+                max-width: 300px;
+                word-wrap: break-word;
+                opacity: 0;
+                transition: opacity 0.3s ease;
+            `;
+            
+            switch (type) {
+                case 'success':
+                    notification.style.background = '#28a745';
+                    break;
+                case 'error':
+                    notification.style.background = '#dc3545';
+                    break;
+                case 'warning':
+                    notification.style.background = '#ffc107';
+                    notification.style.color = '#000';
+                    break;
+                default:
+                    notification.style.background = '#007bff';
+            }
+            
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            
+            // Fade in
+            setTimeout(() => notification.style.opacity = '1', 100);
+            
+            // Remove after 3 seconds
+            setTimeout(() => {
+                notification.style.opacity = '0';
+                setTimeout(() => document.body.removeChild(notification), 300);
+            }, 3000);
         }
 
         // Event listeners
@@ -923,10 +994,66 @@
             }
         });
 
+        // Refresh tabs function
+        async function refreshTabs() {
+            try {
+                currentTabs = await invoke('refresh_tabs');
+                
+                // Rebuild searchable entries list
+                allEntries = [];
+                currentTabs.forEach(tab => {
+                    tab.entries.forEach(entry => {
+                        if (entry.command_type !== 'directory') {
+                            allEntries.push({
+                                ...entry,
+                                tabName: tab.name
+                            });
+                        }
+                    });
+                });
+                
+                renderSidebar();
+                if (currentTabs.length > 0 && !currentTab) {
+                    selectTab(currentTabs[0]);
+                } else if (currentTab) {
+                    // Re-select current tab to refresh content
+                    const updatedTab = currentTabs.find(t => t.name === currentTab.name);
+                    if (updatedTab) {
+                        selectTab(updatedTab);
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to refresh tabs:', error);
+            }
+        }
+
+        // Validate environment
+        async function validateEnvironment() {
+            try {
+                const validation = await invoke('validate_environment');
+                console.log('Environment validation:', validation);
+                
+                // Show warnings for missing tools
+                const warnings = [];
+                if (!validation.has_curl) warnings.push('curl');
+                if (!validation.has_git) warnings.push('git');
+                
+                if (warnings.length > 0) {
+                    console.warn('Missing tools:', warnings.join(', '));
+                }
+                
+                return validation;
+            } catch (error) {
+                console.error('Failed to validate environment:', error);
+                return {};
+            }
+        }
+
         // Initialize app
         window.addEventListener('DOMContentLoaded', async () => {
             loadConfig();
             await loadSystemInfo();
+            await validateEnvironment();
             await loadTabs();
         });
 
