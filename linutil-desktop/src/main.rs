@@ -18,6 +18,7 @@ pub struct EntryInfo {
     pub name: String,
     pub description: String,
     pub command_type: String,
+    pub command_content: String, // Store the actual command content here
     pub task_list: String,
     pub multi_select: bool,
     pub has_children: bool,
@@ -33,6 +34,7 @@ fn load_tabs_with_validation(validate: bool) -> Result<Vec<TabInfo>, String> {
         return Ok(cached_tabs.clone());
     }
     
+    // Load tabs only once to avoid infinite loops
     let tabs = get_tabs(validate);
     let mut result = Vec::new();
     
@@ -46,14 +48,21 @@ fn load_tabs_with_validation(validate: bool) -> Result<Vec<TabInfo>, String> {
         for node in tab.tree.root().descendants() {
             let node_value = node.value();
             if node_value.name != "root" {
+                let (command_type, command_content) = match &node_value.command {
+                    LinutilCommand::Raw(cmd) => ("raw".to_string(), cmd.clone()),
+                    LinutilCommand::LocalFile { executable, args, file } => {
+                        let script_content = std::fs::read_to_string(file)
+                            .unwrap_or_else(|_| format!("Script file: {}", file.display()));
+                        ("script".to_string(), format!("{}|{}|{}", executable, args.join(" "), script_content))
+                    },
+                    LinutilCommand::None => ("directory".to_string(), String::new()),
+                };
+                
                 let entry = EntryInfo {
                     name: node_value.name.clone(),
                     description: node_value.description.clone(),
-                    command_type: match &node_value.command {
-                        LinutilCommand::Raw(_) => "raw".to_string(),
-                        LinutilCommand::LocalFile { .. } => "script".to_string(),
-                        LinutilCommand::None => "directory".to_string(),
-                    },
+                    command_type,
+                    command_content,
                     task_list: node_value.task_list.clone(),
                     multi_select: node_value.multi_select,
                     has_children: node.has_children(),
@@ -77,25 +86,38 @@ fn get_all_tabs(override_validation: Option<bool>) -> Result<Vec<TabInfo>, Strin
 
 #[tauri::command]
 fn execute_command(tab_name: String, entry_name: String) -> Result<String, String> {
-    // Load tabs fresh each time to avoid thread issues
-    let tabs = get_tabs(true);
+    // Use cached tabs to avoid infinite loops
+    let tabs = load_tabs_with_validation(true)?;
     
-    // Find the command in the tabs
+    // Find the command in the cached tabs
     for tab in tabs.iter() {
         if tab.name == tab_name {
-            // Search for the entry in the tree
-            for node in tab.tree.root().descendants() {
-                let node_value = node.value();
-                if node_value.name == entry_name {
-                    match &node_value.command {
-                        LinutilCommand::Raw(cmd) => {
-                            return execute_raw_command(cmd);
+            // Search for the entry
+            for entry in &tab.entries {
+                if entry.name == entry_name {
+                    match entry.command_type.as_str() {
+                        "raw" => {
+                            return execute_raw_command(&entry.command_content);
                         }
-                        LinutilCommand::LocalFile { executable, args, .. } => {
-                            return execute_script_command(executable, args);
+                        "script" => {
+                            let parts: Vec<&str> = entry.command_content.split('|').collect();
+                            if parts.len() >= 2 {
+                                let executable = parts[0];
+                                let args: Vec<String> = if parts[1].is_empty() {
+                                    Vec::new()
+                                } else {
+                                    parts[1].split_whitespace().map(|s| s.to_string()).collect()
+                                };
+                                return execute_script_command(executable, &args);
+                            } else {
+                                return Err("Invalid script command format".to_string());
+                            }
                         }
-                        LinutilCommand::None => {
+                        "directory" => {
                             return Err("Cannot execute directory".to_string());
+                        }
+                        _ => {
+                            return Err("Unknown command type".to_string());
                         }
                     }
                 }
@@ -167,25 +189,35 @@ fn get_system_info() -> Result<HashMap<String, String>, String> {
 
 #[tauri::command]
 fn get_command_preview(tab_name: String, entry_name: String) -> Result<String, String> {
-    let tabs = get_tabs(true);
+    // Use cached tabs to avoid infinite loops
+    let tabs = load_tabs_with_validation(true)?;
     
+    // Find the entry in the cached tabs
     for tab in tabs.iter() {
         if tab.name == tab_name {
-            for node in tab.tree.root().descendants() {
-                let node_value = node.value();
-                if node_value.name == entry_name {
-                    match &node_value.command {
-                        LinutilCommand::Raw(cmd) => {
-                            return Ok(format!("Raw Command:\n{}\n\nDescription:\n{}", cmd, node_value.description));
+            for entry in &tab.entries {
+                if entry.name == entry_name {
+                    match entry.command_type.as_str() {
+                        "raw" => {
+                            return Ok(format!("Raw Command:\n{}\n\nDescription:\n{}", entry.command_content, entry.description));
                         }
-                        LinutilCommand::LocalFile { file, .. } => {
-                            match std::fs::read_to_string(file) {
-                                Ok(content) => return Ok(format!("Script Preview:\n{}\n\nDescription:\n{}", content, node_value.description)),
-                                Err(_) => return Ok(format!("Script File: {}\n\nDescription:\n{}", file.display(), node_value.description)),
+                        "script" => {
+                            let parts: Vec<&str> = entry.command_content.split('|').collect();
+                            if parts.len() >= 3 {
+                                let content = parts[2];
+                                return Ok(format!("Script Preview:\n{}\n\nDescription:\n{}", content, entry.description));
+                            } else {
+                                return Ok(format!("Script Command: {} {}\n\nDescription:\n{}", 
+                                    parts.get(0).unwrap_or(&""), 
+                                    parts.get(1).unwrap_or(&""), 
+                                    entry.description));
                             }
                         }
-                        LinutilCommand::None => {
-                            return Err("Cannot preview directory".to_string());
+                        "directory" => {
+                            return Ok(format!("Directory: {}\n\nDescription:\n{}", entry.name, entry.description));
+                        }
+                        _ => {
+                            return Err("Unknown command type".to_string());
                         }
                     }
                 }
