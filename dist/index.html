@@ -601,8 +601,9 @@
         // Load all tabs
         async function loadTabs() {
             try {
+                // Always use override validation for desktop to prevent loops
                 currentTabs = await invoke('get_all_tabs', {
-                    overrideValidation: appConfig.overrideValidation
+                    overrideValidation: true
                 });
                 
                 // Build searchable entries list
@@ -846,10 +847,9 @@
             
             document.getElementById('configModal').style.display = 'none';
             
-            // Reload tabs if validation override changed
-            if (appConfig.overrideValidation) {
-                loadTabs();
-            }
+            // Always reload tabs when config changes
+            await invoke('update_app_config', appConfig);
+            loadTabs();
         }
 
         function loadConfig() {
@@ -924,10 +924,10 @@
         });
 
         // Initialize app
-        window.addEventListener('DOMContentLoaded', () => {
+        window.addEventListener('DOMContentLoaded', async () => {
             loadConfig();
-            loadSystemInfo();
-            loadTabs();
+            await loadSystemInfo();
+            await loadTabs();
         });
 
         // Close modal when clicking outside

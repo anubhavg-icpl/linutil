@@ -1,11 +1,18 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod cli;
+mod theme;
+mod config;
+mod utils;
+
 use std::collections::HashMap;
 use std::process::Command;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use linutil_core::{get_tabs, Command as LinutilCommand};
+use config::AppConfig;
+use utils::{execute_command_safe, execute_script_safe};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TabInfo {
@@ -26,16 +33,24 @@ pub struct EntryInfo {
 }
 
 static TABS_CACHE: Mutex<Option<Vec<TabInfo>>> = Mutex::new(None);
+static APP_CONFIG: Mutex<AppConfig> = Mutex::new(AppConfig {
+    skip_confirmation: false,
+    override_validation: true,
+    size_bypass: true,
+    mouse: true,
+    bypass_root: true,
+});
 
-fn load_tabs_with_validation(validate: bool) -> Result<Vec<TabInfo>, String> {
+fn load_tabs_with_validation(_validate: bool) -> Result<Vec<TabInfo>, String> {
     let mut cache = TABS_CACHE.lock().unwrap();
     
     if let Some(ref cached_tabs) = *cache {
         return Ok(cached_tabs.clone());
     }
     
-    // Load tabs only once to avoid infinite loops
-    let tabs = get_tabs(validate);
+    // For desktop app, always override validation to prevent compatibility loops
+    // The validate parameter is ignored to ensure stability
+    let tabs = get_tabs(true); // Always use override validation (true = override, false = validate)
     let mut result = Vec::new();
     
     for tab in tabs.iter() {
@@ -80,8 +95,10 @@ fn load_tabs_with_validation(validate: bool) -> Result<Vec<TabInfo>, String> {
 }
 
 #[tauri::command]
-fn get_all_tabs(override_validation: Option<bool>) -> Result<Vec<TabInfo>, String> {
-    load_tabs_with_validation(!override_validation.unwrap_or(false))
+fn get_all_tabs(_override_validation: Option<bool>) -> Result<Vec<TabInfo>, String> {
+    // For desktop app, always override validation to prevent loops
+    // The override_validation parameter is accepted for compatibility but ignored
+    load_tabs_with_validation(true)
 }
 
 #[tauri::command]
@@ -129,36 +146,11 @@ fn execute_command(tab_name: String, entry_name: String) -> Result<String, Strin
 }
 
 fn execute_raw_command(cmd: &str) -> Result<String, String> {
-    let output = Command::new("sh")
-        .arg("-c")
-        .arg(cmd)
-        .output()
-        .map_err(|e| format!("Failed to execute command: {}", e))?;
-    
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    
-    if output.status.success() {
-        Ok(format!("Success:\n{}", stdout))
-    } else {
-        Err(format!("Error:\n{}\n{}", stdout, stderr))
-    }
+    execute_command_safe(cmd)
 }
 
 fn execute_script_command(executable: &str, args: &[String]) -> Result<String, String> {
-    let output = Command::new(executable)
-        .args(args)
-        .output()
-        .map_err(|e| format!("Failed to execute script: {}", e))?;
-    
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    
-    if output.status.success() {
-        Ok(format!("Success:\n{}", stdout))
-    } else {
-        Err(format!("Error:\n{}\n{}", stdout, stderr))
-    }
+    execute_script_safe(executable, args)
 }
 
 #[tauri::command]
@@ -228,13 +220,41 @@ fn get_command_preview(tab_name: String, entry_name: String) -> Result<String, S
     Err("Command not found".to_string())
 }
 
+#[tauri::command]
+fn get_app_config() -> Result<AppConfig, String> {
+    let config = APP_CONFIG.lock().unwrap();
+    Ok(config.clone())
+}
+
+#[tauri::command]
+fn update_app_config(new_config: AppConfig) -> Result<(), String> {
+    let mut config = APP_CONFIG.lock().unwrap();
+    *config = new_config;
+    
+    // Clear cache to force reload with new validation settings
+    let mut cache = TABS_CACHE.lock().unwrap();
+    *cache = None;
+    
+    Ok(())
+}
+
+#[tauri::command]
+fn clear_cache() -> Result<(), String> {
+    let mut cache = TABS_CACHE.lock().unwrap();
+    *cache = None;
+    Ok(())
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             get_all_tabs,
             execute_command,
             get_system_info,
-            get_command_preview
+            get_command_preview,
+            get_app_config,
+            update_app_config,
+            clear_cache
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

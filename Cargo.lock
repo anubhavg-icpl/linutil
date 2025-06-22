@@ -1839,11 +1839,13 @@ dependencies = [
 name = "linutil-desktop"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "linutil_core",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
+ "toml 0.8.19",
 ]
 
 [[package]]
